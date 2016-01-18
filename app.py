@@ -3,8 +3,8 @@ import json
 import os
 
 from apiclient.discovery import build
-from httplib2 import Http
 from flask import Flask, request
+from httplib2 import Http
 from oauth2client.client import SignedJwtAssertionCredentials
 from slacker import Slacker
 
@@ -18,12 +18,20 @@ credentials = SignedJwtAssertionCredentials(client_email, private_key,
 http = credentials.authorize(Http())
 service = build('calendar', 'v3', http=http)
 
-@app.route('/', methods=['POST'])
+@app.route('/auth', methods=['GET'])
+def oauth():
+    code = request.args.get('code')
+    access_token = Slacker.oauth.access(os.environ['CLIENT_ID'], os.environ['CLIENT_SECRET'], code).body['access_token']
+    return 'successfully authenticated'
+
+@app.route('/event', methods=['POST'])
 def make_event():
+    if not request.form['token'] == os.environ['token']:
+        return 'Could not validate request'
     try:
         slack = Slacker(os.environ['SLACK_KEY'])
         channel = request.form['channel_id']
-        text = request.form['text'] # CURRENT FORMAT: EVENT/12-31-16/9:00 PM/11:00 PM/(OPTIONAL) LOCATION'
+        text = request.form['text'] # CURRENT FORMAT: EVENT/12-31-16/9:00 PM/11:00 PM/(OPTIONAL) LOCATION
         if channel.startswith('C'):
             members = slack.channels.info(channel).body['channel']['members']
         elif channel.startswith('G'):
