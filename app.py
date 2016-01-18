@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import shelve
 
 from apiclient.discovery import build
 from flask import Flask, request
@@ -20,16 +21,21 @@ service = build('calendar', 'v3', http=http)
 
 @app.route('/auth', methods=['GET'])
 def oauth():
+    db = shelve.open('db')
     code = request.args.get('code')
-    access_token = Slacker.oauth.access(os.environ['CLIENT_ID'], os.environ['CLIENT_SECRET'], code).body['access_token']
+    oauth_info = Slacker.oauth.access(os.environ['CLIENT_ID'], os.environ['CLIENT_SECRET'], code).body
+    db[str(oauth_info['team_id'])] = str(oauth_info['access_token'])
+    db.close()
     return 'successfully authenticated'
 
 @app.route('/event', methods=['POST'])
 def make_event():
-    if not request.form['token'] == os.environ['token']:
-        return 'Could not validate request'
+    if not request.form.get('token') == os.environ['token']:
+       return 'Could not validate request'
     try:
-        slack = Slacker(os.environ['SLACK_KEY'])
+        db = shelve.open('db')
+        slack = Slacker(db[request.form['team_id']])
+        db.close()
         channel = request.form['channel_id']
         text = request.form['text'] # CURRENT FORMAT: EVENT/12-31-16/9:00 PM/11:00 PM/(OPTIONAL) LOCATION
         if channel.startswith('C'):
@@ -38,7 +44,8 @@ def make_event():
             members = slack.groups.info(channel).body['group']['members']
         attendees = []
         for member in members:
-            attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
+            if slack.users.info(member).body['user']['profile'].get('email'):
+                attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
         text = text.split('/')
         summary = text[0]
         date = datetime.datetime.strptime(text[1], "%m-%d-%y")
@@ -50,7 +57,8 @@ def make_event():
             event['location'] = location
         eventsResult = service.events().insert(calendarId='primary', body=event, sendNotifications=True).execute()
         return 'Event created!'
-    except:
+    except Exception as e:
+        print e
         return 'Input Not Formatted Correctly! Input must come in in the following format: EVENT/12-31-16/9:00 PM/11:00 PM/(OPTIONAL) LOCATION'
 
 def sanitize_time(date, time):
