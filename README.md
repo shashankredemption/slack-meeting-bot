@@ -8,5 +8,5 @@ Add to slack from here:
 
 Once it's in your slack channel, you can enter the meeting information in the following format:
 
-/meeting EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(Optional) @users @to @invite OR @channel to invite everyone
+/meeting EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(Optional) with @users @to @invite OR @channel to invite everyone
 

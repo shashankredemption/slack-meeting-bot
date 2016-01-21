@@ -35,30 +35,31 @@ def make_event():
     try:
         text = request.form['text']
         if text == "help":
-            return "Input is formatted in following way. EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional) @users @to @invite OR @channel to invite everyone"
+            return "Input is formatted in following way. EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional) with @users @to @invite OR @channel to invite everyone"
         db = shelve.open('db')
         slack = Slacker(db[request.form['team_id']])
         db.close()
-        channel = request.form['channel_id']
-        if channel.startswith('C'):
-            members = slack.channels.info(channel).body['channel']['members']
-        elif channel.startswith('G'):
-            members = slack.groups.info(channel).body['group']['members']
-        attendees = get_attendees(text, members)
-        text = text.replace(" from ", ",,,,").replace(" to ", ",,,,").replace(" on ", ",,,,").replace(" at ", ",,,,").split(',,,,') #unfortunately hideous. returns [name, start_time, end_time, date, location(if provided)]
+        channel_id = request.form['channel_id']
+        if channel_id.startswith('C'):
+            members = slack.channels.info(channel_id).body['channel']['members']
+        elif channel_id.startswith('G'):
+            members = slack.groups.info(channel_id).body['group']['members']
+        user_id = request.form['user_id']
+        attendees = get_attendees(slack, text, members, user_id)
+        text = text.replace(" from ", ",,,,").replace(" to ", ",,,,").replace(" on ", ",,,,").replace(" at ", ",,,,").replace(" with ", ",,,,").split(',,,,') #unfortunately hideous. returns [name, start_time, end_time, date, location(if provided)]
         summary = text[0]
         date = datetime.datetime.strptime(text[3], "%m/%d/%y")
         start = sanitize_time(date, text[1])
         end = sanitize_time(date, text[2])
         event = {'summary': summary, 'start': start, 'end': end, 'attendees': attendees}
-        if len(text) > 4:
+        if len(text) > 5:
             location = text[4]
             event['location'] = location
         eventsResult = service.events().insert(calendarId='primary', body=event, sendNotifications=True).execute()
         return 'Event created!'
     except Exception as e:
         print str(e)
-        return 'Input Not Formatted Correctly! Input must come in in the following format: EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional).'
+        return 'Input Not Formatted Correctly! Input must come in in the following format: EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional) gwith @users @to @invite OR @channel to invite everyone.'
 
 def sanitize_time(date, time):
     time = time.split(':')
@@ -70,7 +71,7 @@ def sanitize_time(date, time):
     time_dict = {'dateTime' : time.isoformat(), 'timeZone': 'America/Los_Angeles'}
     return time_dict
 
-def get_attendees(text, members):
+def get_attendees(slack, text, members, user_id):
     words = text.split()
     names = set()
     attendees = []
@@ -80,6 +81,7 @@ def get_attendees(text, members):
                 for member in members:
                     if slack.users.info(member).body['user']['profile'].get('email'):
                         attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
+                return attendees
             else:
                 names.add(word.strip('@'))
     if names:
@@ -89,6 +91,7 @@ def get_attendees(text, members):
                 attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
             if len(attendees) >= len(names): #save some API calls and time if you've invited as many people as there are
                 break
+    attendees.append({'email': slack.users.info(user_id).body['user']['profile']['email']})
     return attendees
 
 if __name__ == '__main__':
