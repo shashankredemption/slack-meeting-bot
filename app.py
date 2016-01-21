@@ -35,7 +35,7 @@ def make_event():
     try:
         text = request.form['text']
         if text == "help":
-            return "Input is formatted in following way. EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional)."
+            return "Input is formatted in following way. EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional) @users @to @invite OR @channel to invite everyone"
         db = shelve.open('db')
         slack = Slacker(db[request.form['team_id']])
         db.close()
@@ -44,10 +44,7 @@ def make_event():
             members = slack.channels.info(channel).body['channel']['members']
         elif channel.startswith('G'):
             members = slack.groups.info(channel).body['group']['members']
-        attendees = []
-        for member in members:
-            if slack.users.info(member).body['user']['profile'].get('email'):
-                attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
+        attendees = get_attendees(text, members)
         text = text.replace(" from ", ",,,,").replace(" to ", ",,,,").replace(" on ", ",,,,").replace(" at ", ",,,,").split(',,,,') #unfortunately hideous. returns [name, start_time, end_time, date, location(if provided)]
         summary = text[0]
         date = datetime.datetime.strptime(text[3], "%m/%d/%y")
@@ -72,6 +69,27 @@ def sanitize_time(date, time):
     time = datetime.datetime.combine(date, time)
     time_dict = {'dateTime' : time.isoformat(), 'timeZone': 'America/Los_Angeles'}
     return time_dict
+
+def get_attendees(text, members):
+    words = text.split()
+    names = set()
+    attendees = []
+    for word in words:
+        if word.startswith('@'):
+            if word == "@channel":
+                for member in members:
+                    if slack.users.info(member).body['user']['profile'].get('email'):
+                        attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
+            else:
+                names.add(word.strip('@'))
+    if names:
+        for member in members:
+            user = slack.users.info(member).body['user']
+            if user['name'] in names and user['profile'].get('email'):
+                attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
+            if len(attendees) >= len(names): #save some API calls and time if you've invited as many people as there are
+                break
+    return attendees
 
 if __name__ == '__main__':
     app.run()
