@@ -33,11 +33,13 @@ def make_event():
     if not request.form.get('token') == os.environ['token']:
        return 'Could not validate request'
     try:
+        text = request.form['text']
+        if text == "help":
+            return "Input is formatted in following way. EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional)."
         db = shelve.open('db')
         slack = Slacker(db[request.form['team_id']])
         db.close()
         channel = request.form['channel_id']
-        text = request.form['text'] # CURRENT FORMAT: EVENT/12-31-16/9:00 PM/11:00 PM/(OPTIONAL) LOCATION
         if channel.startswith('C'):
             members = slack.channels.info(channel).body['channel']['members']
         elif channel.startswith('G'):
@@ -46,11 +48,11 @@ def make_event():
         for member in members:
             if slack.users.info(member).body['user']['profile'].get('email'):
                 attendees.append({'email': slack.users.info(member).body['user']['profile']['email']})
-        text = text.split('/')
+        text = text.replace(" from ", ",,,,").replace(" to ", ",,,,").replace(" on ", ",,,,").replace(" at ", ",,,,").split(',,,,') #unfortunately hideous. returns [name, start_time, end_time, date, location(if provided)]
         summary = text[0]
-        date = datetime.datetime.strptime(text[1], "%m-%d-%y")
-        start = sanitize_time(date, text[2])
-        end = sanitize_time(date, text[3])
+        date = datetime.datetime.strptime(text[3], "%m/%d/%y")
+        start = sanitize_time(date, text[1])
+        end = sanitize_time(date, text[2])
         event = {'summary': summary, 'start': start, 'end': end, 'attendees': attendees}
         if len(text) > 4:
             location = text[4]
@@ -58,8 +60,8 @@ def make_event():
         eventsResult = service.events().insert(calendarId='primary', body=event, sendNotifications=True).execute()
         return 'Event created!'
     except Exception as e:
-        print e
-        return 'Input Not Formatted Correctly! Input must come in in the following format: EVENT/12-31-16/9:00 PM/11:00 PM/(OPTIONAL) LOCATION'
+        print str(e)
+        return 'Input Not Formatted Correctly! Input must come in in the following format: EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional).'
 
 def sanitize_time(date, time):
     time = time.split(':')
