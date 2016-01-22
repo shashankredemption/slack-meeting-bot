@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import redis
 import shelve
 
 from apiclient.discovery import build
@@ -18,14 +19,14 @@ credentials = SignedJwtAssertionCredentials(client_email, private_key,
     'https://www.googleapis.com/auth/calendar')
 http = credentials.authorize(Http())
 service = build('calendar', 'v3', http=http)
+redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+redis = redis.from_url(redis_url)
 
 @app.route('/auth', methods=['GET'])
 def oauth():
-    db = shelve.open('db')
     code = request.args.get('code')
     oauth_info = Slacker.oauth.access(os.environ['CLIENT_ID'], os.environ['CLIENT_SECRET'], code).body
-    db[str(oauth_info['team_id'])] = str(oauth_info['access_token'])
-    db.close()
+    redis.set(str(oauth_info['team_id']), str(oauth_info['access_token']))
     return 'successfully authenticated'
 
 @app.route('/event', methods=['POST'])
@@ -36,9 +37,7 @@ def make_event():
         text = request.form['text']
         if text == "help":
             return "Input is formatted in following way. EVENT NAME from HH:MM PM to HH:MM PM on MM/DD/YY at LOCATION(optional) with @users @to @invite OR @channel to invite everyone"
-        db = shelve.open('db')
-        slack = Slacker(db[request.form['team_id']])
-        db.close()
+        slack = Slacker(redis.get(str(request.form['team_id'])))
         channel_id = request.form['channel_id']
         if channel_id.startswith('C'):
             members = slack.channels.info(channel_id).body['channel']['members']
