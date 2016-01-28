@@ -95,7 +95,7 @@ def sanitize_time(date, time):
     suffix = time[1].split(' ')
     if int(time[0]) > 0 and int(time[0]) < 12 and suffix[1].lower() == 'pm':
         time[0] = int(time[0]) + 12
-    time = datetime.time(int(time[0]), int(time[1][0]))
+    time = datetime.time(int(time[0]), int(suffix[0]))
     time = datetime.datetime.combine(date, time)
     time_dict = {'dateTime' : time.isoformat(), 'timeZone': 'America/Los_Angeles'}
     return time_dict
